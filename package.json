@@ -1,7 +1,7 @@
 {
   "name": "manttest-page-login-store",
   "version": "0.0.0",
-  "description": "Example git project that is used for typescript libraries as a starter pack",
+  "description": "Manttest login page functionality",
   "main": "dist/main.js",
   "typings": "dist/main.d.ts",
   "jam": {
@@ -68,7 +68,12 @@
     "webpack": "2.1.0-beta.22",
     "webpack-node-externals": "^1.4.3"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@types/object-assign": "^4.0.29",
+    "object-assign": "^4.1.0",
+    "rxjs": "^5.0.0-rc.1",
+    "rxstore": "^1.0.0"
+  },
   "jest": {
     "verbose": true,
     "scriptPreprocessor": "node_modules/typescript-babel-jest",
