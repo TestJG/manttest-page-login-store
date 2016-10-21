@@ -27,22 +27,9 @@
     "url": "git+https://github.com/testjg/manttest-page-login-store.git"
   },
   "keywords": [
-    "example",
-    "typescript",
-    "library",
-    "starter",
-    "webpack",
-    "browserify",
-    "dts-bundle",
-    "package",
-    "tslint",
-    "jest",
-    "babel",
-    "tsloader",
-    "boilerplate",
-    "awesome-typescript-loader"
+    "manttest"
   ],
-  "author": "Hagai Cohen",
+  "author": "Iskander Sierra",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/testjg/manttest-page-login-store/issues"
@@ -72,7 +59,7 @@
     "@types/object-assign": "^4.0.29",
     "object-assign": "^4.1.0",
     "rxjs": "^5.0.0-rc.1",
-    "rxstore": "^1.0.0"
+    "rxstore": "^1.2.0"
   },
   "jest": {
     "verbose": true,
