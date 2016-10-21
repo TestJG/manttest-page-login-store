@@ -3,11 +3,16 @@
 import 'jest';
 require("babel-core/register");
 require("babel-polyfill");
+import { Observable } from "rxjs/Observable";
+import "rxjs/add/operator/first";
+import "rxjs/add/operator/timeout";
+import "rxjs/add/operator/toPromise";
 
 import { reassign } from "rxstore";
 import { testActions, expectedActions } from "./rxstore-jest";
 import {
-  LoginEvents, LoginCommands, loginReducer, LoginState, defaultLoginState,
+  LoginEvents, loginReducer, LoginState, defaultLoginState,
+  createLoginStore,
 } from "./store";
 
 const errorMessage = "some error";
@@ -30,7 +35,7 @@ const pass = reassign(init, { password: passPassword });
 const password = reassign(init, { password: passwordPassword });
 
 testActions(LoginEvents, "LoginEvents",
-  expectedActions<LoginState>("MantTest--Login--Event--",
+  expectedActions<LoginState>("MantTest.Login/",
     actions => {
       actions.typed("usernameChanged", "USERNAME_CHANGED")
         .withSample(init, johnName, john, "intro user name")
@@ -77,12 +82,40 @@ testActions(LoginEvents, "LoginEvents",
         .withSample(withDataCannotValidate, false, withDataCannotValidate)
         .withSample(withDataCannotValidate, true, withData)
         ;
-    }),
-);
 
-testActions(LoginCommands, "LoginCommands",
-  expectedActions<LoginState>("MantTest--Login--Command--",
-    actions => {
       actions.empty("validate", "VALIDATE");
     }),
 );
+
+describe("createLoginStore", () => {
+  describe("Sanity checks", () => {
+    it("it should be a function",
+      () => expect(typeof createLoginStore).toBe("function"));
+  }); //    Sanity checks
+
+  describe("Given no initial state", () => {
+    describe("When a store is created", () => {
+      const store = createLoginStore();
+      it("the first state should be the default state",
+        () => {
+          const prom = store.state$
+            .first().timeout(40)
+            .toPromise() as PromiseLike<LoginState>;
+          return prom.then(s => expect(s).toEqual(defaultLoginState()));
+        });
+    }); //    When a store is created
+  }); //    Given no initial state the first state should be the default state
+
+  describe("Given an initial state", () => {
+    describe("When a store is created", () => {
+      const store = createLoginStore(withData);
+      it("the first state should be the given state",
+        () => {
+          const prom = store.state$
+            .first().timeout(40)
+            .toPromise() as PromiseLike<LoginState>;
+          return prom.then(s => expect(s).toEqual(init));
+        });
+    }); //    When a store is created
+  }); //    Given no initial state the first state should be the default state
+}); //    createLoginStore

@@ -98,6 +98,11 @@ export const testActions = <TState>(
   expected: ExpectedActionsDescription<TState>
 ) => {
   describe(description, () => {
+    describe("Sanity checks", () => {
+      it("it should be an Object",
+        () => expect(typeof current).toBe("object"));
+    }); //    Sanity checks
+
     expected.actions.forEach(expectedAction => {
       const currentAction = current[expectedAction.name];
       describe(`Action ${expectedAction.name}`, () => {
