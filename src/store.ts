@@ -1,18 +1,25 @@
+import { Observable } from "rxjs/Observable";
+import "rxjs/add/operator/distinctUntilChanged";
+import "rxjs/add/operator/filter";
+import "rxjs/add/operator/map";
+import "rxjs/add/operator/switchMap";
 import {
   reassign, reassignif,
-  actionCreator, TypedActionInstance, EmptyActionInstance,
+  actionCreator, TypedActionDescription, EmptyActionDescription,
   reducerFromActions, Reducer,
   createStore, Store, StoreMiddleware,
+  withEffects, EffectsFactory,
 } from "rxstore";
+import { LoginService, LoginResult } from "./loginService";
 
 /* MODELS */
 
 export interface LoginState {
   username: string;
   password: string;
-  validating: boolean;
-  canValidate: boolean;
-  validated: boolean;
+  loginInProgress: boolean;
+  canLogin: boolean;
+  loginDone: boolean;
   error: string | undefined;
 }
 
@@ -21,11 +28,11 @@ export interface LoginState {
 export interface ILoginEvents {
   usernameChanged(value: string): void;
   passwordChanged(value: string): void;
-  validationStarted(): void;
-  validationCompleted(): void;
-  validationFailed(error: string): void;
-  canValidateChanged(value: string): void;
-  validate(): void;
+  loginStarted(): void;
+  loginCompleted(): void;
+  loginFailed(error: string): void;
+  canLoginChanged(value: string): void;
+  login(): void;
 }
 
 const newEvent = actionCreator<LoginState>("MantTest.Login/");
@@ -39,65 +46,112 @@ export const LoginEvents = {
     "PASSWORD_CHANGED",
     (s, password) => reassign(s, { password })),
 
-  validationStarted: newEvent(
-    "VALIDATION_STARTED",
-    s => reassign(s, { validating: true, error: undefined })),
+  loginStarted: newEvent(
+    "LOGIN_STARTED",
+    s => reassign(s, { loginInProgress: true, error: undefined })),
 
-  validationCompleted: newEvent(
-    "VALIDATION_COMPLETED",
-    s => reassign(s, { validating: false, validated: true, error: undefined })),
+  loginCompleted: newEvent(
+    "LOGIN_COMPLETED",
+    s => reassign(s, { loginInProgress: false, loginDone: true, error: undefined })),
 
-  validationFailed: newEvent.of<string>(
-    "VALIDATION_FAILED",
-    (s, error) => reassign(s, { validating: false, validated: false, error })),
+  loginFailed: newEvent.of<string>(
+    "LOGIN_FAILED",
+    (s, error) => reassign(s, { loginInProgress: false, loginDone: false, error })),
 
-  canValidateChanged: newEvent.of<boolean>(
-    "CAN_VALIDATE_CHANGED",
-    (s, canValidate) => reassign(s, { canValidate })),
+  canLoginChanged: newEvent.of<boolean>(
+    "CAN_LOGIN_CHANGED",
+    (s, canLogin) => reassign(s, { canLogin })),
 
-  validate: newEvent("VALIDATE"),
+  login: newEvent("LOGIN"),
 };
 
 /* REDUCER */
 
-export const defaultLoginState = (): LoginState => ({
-  username: "",
-  password: "",
-  canValidate: false,
-  validated: false,
-  validating: false,
-  error: undefined,
-});
-
 export const loginReducer = reducerFromActions(LoginEvents);
 
-/* STORE */
-
-export type LoginStore = Store<LoginState> & ILoginEvents;
+/* EXTRACT to rxstore */
 
 export interface ICreateStoreOptions<TState> {
   init?: TState;
-  middlewaresBefore?: StoreMiddleware<LoginStore>[];
-  middlewaresAfter?: StoreMiddleware<LoginStore>[];
+  middlewaresBefore?: StoreMiddleware<Store<TState>>[];
+  middlewaresAfter?: StoreMiddleware<Store<TState>>[];
 }
 
-const defaultOptions = {
+interface IInternalCreateStoreOptions<TState> {
+  init: TState;
+  middlewaresBefore: StoreMiddleware<Store<TState>>[];
+  middlewaresAfter: StoreMiddleware<Store<TState>>[];
+}
+
+const createDefaultOptions = <TState>(
+  defaultState: TState | (() => TState)
+): IInternalCreateStoreOptions<TState> => ({
+  init: typeof defaultState === "function" ? defaultState() : defaultState,
   middlewaresBefore: [],
   middlewaresAfter: [],
+});
+
+const getOptions = <TState>(
+  defaultState: TState | (() => TState),
+  options?: ICreateStoreOptions<TState>
+): IInternalCreateStoreOptions<TState> => {
+  const defaultOptions = createDefaultOptions(defaultState);
+  const result = reassign(defaultOptions, options);
+  return result!;
 };
 
 export const createStoreHelper =
   <TState, TStore extends Store<TState>>(
     reducer: Reducer<TState>,
     defaultState: TState | (() => TState),
-    ...middlewares: StoreMiddleware<LoginStore>[]
+    ...middlewares: StoreMiddleware<Store<TState>>[]
   ) =>
-  (options?: ICreateStoreOptions<LoginState>) => {
-    const opts = reassign(defaultOptions, {
-      init: typeof defaultState === "function" ? defaultState() : defaultState,
-    }, options);
-    return createStore(reducer, opts.init);
-  };
+    (options?: ICreateStoreOptions<TState>) => {
+      const opts = getOptions(defaultState, options);
+      const store = createStore<TState, TStore>(
+        reducer,
+        opts.init,
+        ...opts.middlewaresBefore,
+        ...middlewares,
+        ...opts.middlewaresAfter,
+      );
+      return store;
+    };
 
 
-export const createLoginStore = createStoreHelper(loginReducer, defaultLoginState);
+/* STORE */
+
+export type LoginStore = Store<LoginState> & ILoginEvents;
+
+export const defaultLoginState = (): LoginState => ({
+  username: "",
+  password: "",
+  canLogin: false,
+  loginDone: false,
+  loginInProgress: false,
+  error: undefined,
+});
+
+export const validationEffects = (store: LoginStore) => {
+  store.state$
+    .map(s => !!s.username && !!s.password)
+    .distinctUntilChanged()
+    .map(LoginEvents.canLoginChanged.create)
+    .subscribe(store.dispatch);
+};
+
+export const loginEffects =
+  (loginService: LoginService) =>
+  (store: LoginStore) => {
+    return;
+};
+
+export const createLoginStore =
+  (loginService: LoginService) => {
+  return createStoreHelper<LoginState, LoginStore>(
+    loginReducer,
+    defaultLoginState,
+    withEffects(validationEffects),
+    withEffects(loginEffects(loginService)),
+    );
+};
