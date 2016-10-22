@@ -118,7 +118,6 @@ export const createStoreHelper =
       return store;
     };
 
-
 /* STORE */
 
 export type LoginStore = Store<LoginState> & ILoginEvents;
@@ -142,16 +141,16 @@ export const validationEffects = (store: LoginStore) => {
 
 export const loginEffects =
   (loginService: LoginService) =>
-  (store: LoginStore) => {
-    return;
-};
+    (store: LoginStore) => {
+      return;
+    };
 
 export const createLoginStore =
   (loginService: LoginService) => {
-  return createStoreHelper<LoginState, LoginStore>(
-    loginReducer,
-    defaultLoginState,
-    withEffects(validationEffects),
-    withEffects(loginEffects(loginService)),
+    return createStoreHelper<LoginState, LoginStore>(
+      loginReducer,
+      defaultLoginState,
+      withEffects(validationEffects),
+      withEffects(loginEffects(loginService)),
     );
-};
+  };
