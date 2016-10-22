@@ -9,7 +9,7 @@ import "rxjs/add/operator/timeout";
 import "rxjs/add/operator/toPromise";
 
 import { reassign } from "rxstore";
-import { testActions, expectedActions } from "./rxstore-jest";
+import { testActions, expectedActions } from "rxstore-jest";
 import {
   LoginEvents, loginReducer, LoginState, defaultLoginState,
   createLoginStore,

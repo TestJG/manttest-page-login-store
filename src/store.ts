@@ -89,14 +89,15 @@ const defaultOptions = {
 export const createStoreHelper =
   <TState, TStore extends Store<TState>>(
     reducer: Reducer<TState>,
-    defaultState: TState | (() => TState)
+    defaultState: TState | (() => TState),
+    ...middlewares: StoreMiddleware<LoginStore>[]
   ) =>
-    (options?: ICreateStoreOptions<LoginState>) => {
-      const opts = reassign(defaultOptions, {
-        init: typeof defaultState === "function" ? defaultState() : defaultState,
-      }, options);
-      return createStore(reducer, opts.init);
-    };
+  (options?: ICreateStoreOptions<LoginState>) => {
+    const opts = reassign(defaultOptions, {
+      init: typeof defaultState === "function" ? defaultState() : defaultState,
+    }, options);
+    return createStore(reducer, opts.init);
+  };
 
 
 export const createLoginStore = createStoreHelper(loginReducer, defaultLoginState);
