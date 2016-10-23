@@ -15,10 +15,10 @@
     "build": "webpack || echo not ok",
     "test": "npm run test:watch",
     "test:once": "jest",
-    "test:watch": "jest --watch",
+    "test:watch": "jest --watchAll",
     "coverage": "npm run coverage:watch",
     "coverage:once": "jest --coverage --no-cache",
-    "coverage:watch": "jest --coverage --watch --no-cache",
+    "coverage:watch": "jest --coverage --watchAll --no-cache",
     "prerelease": "npm run build && npm run coverage:once",
     "release": "standard-version && npm pack"
   },
@@ -57,10 +57,12 @@
     "webpack-node-externals": "^1.4.3"
   },
   "dependencies": {
+    "@types/deep-equal": "0.0.30",
     "@types/object-assign": "^4.0.29",
+    "deep-equal": "^1.0.1",
     "object-assign": "^4.1.0",
     "rxjs": "^5.0.0-rc.1",
-    "rxstore": "^1.2.1"
+    "rxstore": "^1.3.4"
   },
   "jest": {
     "verbose": true,

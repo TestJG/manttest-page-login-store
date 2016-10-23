@@ -1,14 +1,22 @@
 import { Observable } from "rxjs/Observable";
+import "rxjs/add/observable/of";
+import "rxjs/add/observable/merge";
 import "rxjs/add/operator/distinctUntilChanged";
 import "rxjs/add/operator/filter";
 import "rxjs/add/operator/map";
 import "rxjs/add/operator/switchMap";
+import "rxjs/add/operator/startWith";
+import "rxjs/add/operator/observeOn";
+import "rxjs/add/operator/subscribeOn";
+import "rxjs/add/operator/debounceTime";
+import "rxjs/add/operator/timeout";
+import * as deepEqual from "deep-equal";
 import {
   reassign, reassignif,
   actionCreator, TypedActionDescription, EmptyActionDescription,
-  reducerFromActions, Reducer,
+  reducerFromActions, Reducer, StateUpdate,
   createStore, Store, StoreMiddleware,
-  withEffects, EffectsFactory,
+  withEffects, defineStore, ICreateStoreOptions,
 } from "rxstore";
 import { LoginService, LoginResult } from "./loginService";
 
@@ -65,60 +73,9 @@ export const LoginEvents = {
   login: newEvent("LOGIN"),
 };
 
-/* REDUCER */
+/* STORE */
 
 export const loginReducer = reducerFromActions(LoginEvents);
-
-/* EXTRACT to rxstore */
-
-export interface ICreateStoreOptions<TState> {
-  init?: TState;
-  middlewaresBefore?: StoreMiddleware<Store<TState>>[];
-  middlewaresAfter?: StoreMiddleware<Store<TState>>[];
-}
-
-interface IInternalCreateStoreOptions<TState> {
-  init: TState;
-  middlewaresBefore: StoreMiddleware<Store<TState>>[];
-  middlewaresAfter: StoreMiddleware<Store<TState>>[];
-}
-
-const createDefaultOptions = <TState>(
-  defaultState: TState | (() => TState)
-): IInternalCreateStoreOptions<TState> => ({
-  init: typeof defaultState === "function" ? defaultState() : defaultState,
-  middlewaresBefore: [],
-  middlewaresAfter: [],
-});
-
-const getOptions = <TState>(
-  defaultState: TState | (() => TState),
-  options?: ICreateStoreOptions<TState>
-): IInternalCreateStoreOptions<TState> => {
-  const defaultOptions = createDefaultOptions(defaultState);
-  const result = reassign(defaultOptions, options);
-  return result!;
-};
-
-export const createStoreHelper =
-  <TState, TStore extends Store<TState>>(
-    reducer: Reducer<TState>,
-    defaultState: TState | (() => TState),
-    ...middlewares: StoreMiddleware<Store<TState>>[]
-  ) =>
-    (options?: ICreateStoreOptions<TState>) => {
-      const opts = getOptions(defaultState, options);
-      const store = createStore<TState, TStore>(
-        reducer,
-        opts.init,
-        ...opts.middlewaresBefore,
-        ...middlewares,
-        ...opts.middlewaresAfter,
-      );
-      return store;
-    };
-
-/* STORE */
 
 export type LoginStore = Store<LoginState> & ILoginEvents;
 
@@ -131,23 +88,32 @@ export const defaultLoginState = (): LoginState => ({
   error: undefined,
 });
 
-export const validationEffects = (store: LoginStore) => {
+const validationEffects = (store: LoginStore) =>
   store.state$
     .map(s => !!s.username && !!s.password)
     .distinctUntilChanged()
-    .map(LoginEvents.canLoginChanged.create)
-    .subscribe(store.dispatch);
-};
+    .map(LoginEvents.canLoginChanged.create);
 
-export const loginEffects =
+const loginEffects =
   (loginService: LoginService) =>
-    (store: LoginStore) => {
-      return;
-    };
+    (store: LoginStore) =>
+      store.update$
+        .filter(u => u.action.type === LoginEvents.login.type)
+        .filter(u => u.state.canLogin)
+        .do<StateUpdate<LoginState>>(u => console.log("Login Effect: ", u))
+        .switchMap(u =>
+          loginService(u.state.username, u.state.password)
+            .do<LoginResult>(r => console.log("Login Result: ", r))
+            .map(r => r.kind === "success"
+              ? LoginEvents.loginCompleted.create()
+              : LoginEvents.loginFailed.create(r.error))
+            .timeout(10000, Observable.of(LoginEvents.loginFailed.create("Service is unavailable right now")))
+            .startWith(LoginEvents.loginStarted.create())
+        );
 
 export const createLoginStore =
   (loginService: LoginService) => {
-    return createStoreHelper<LoginState, LoginStore>(
+    return defineStore<LoginState, LoginStore>(
       loginReducer,
       defaultLoginState,
       withEffects(validationEffects),

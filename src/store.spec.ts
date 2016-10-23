@@ -1,27 +1,41 @@
 "use strict";
 
-import 'jest';
+import "jest";
 require("babel-core/register");
 require("babel-polyfill");
 import { Observable } from "rxjs/Observable";
+import { queue } from "rxjs/scheduler/queue";
+import "rxjs/add/observable/concat";
 import "rxjs/add/observable/empty";
 import "rxjs/add/observable/of";
+import "rxjs/add/operator/catch";
 import "rxjs/add/operator/concat";
+import "rxjs/add/operator/delay";
 import "rxjs/add/operator/do";
 import "rxjs/add/operator/first";
 import "rxjs/add/operator/filter";
 import "rxjs/add/operator/last";
 import "rxjs/add/operator/map";
+import "rxjs/add/operator/observeOn";
+import "rxjs/add/operator/subscribeOn";
 import "rxjs/add/operator/switchMap";
+import "rxjs/add/operator/takeLast";
 import "rxjs/add/operator/timeout";
 import "rxjs/add/operator/toPromise";
 
-import { reassign, Store, Action, STORE_ACTIONS } from "rxstore";
+import * as deepEqual from "deep-equal";
+
+import { reassign, Store, Action, StoreActions, logUpdates, startEffects } from "rxstore";
 import { testActions, expectedActions } from "rxstore-jest";
 import {
   LoginEvents, loginReducer, LoginState, defaultLoginState,
   createLoginStore, LoginStore,
-} from "./store";
+  LoginService, ErrorLoginResult, SuccessLoginResult, LoginResult,
+} from "./index";
+import {
+  testLastState, testUpdateEffects, testActionEffects, testStateEffects,
+  expectAction, expectItem,
+} from "./rxstore-jest";
 
 const errorMessage = "some error";
 const johnName = "john";
@@ -50,7 +64,7 @@ describe("defaultLoginState", () => {
 
   describe("Given the default state", () => {
     it("it should be equal to expected state", () =>
-      expect(init).toEqual({
+      expect(defaultLoginState()).toEqual({
         username: "",
         password: "",
         canLogin: false,
@@ -60,7 +74,6 @@ describe("defaultLoginState", () => {
       }));
   });    // Given the default state
 });    // defaultLoginState
-
 
 testActions(LoginEvents, "LoginEvents",
   expectedActions<LoginState>("MantTest.Login/",
@@ -82,7 +95,8 @@ testActions(LoginEvents, "LoginEvents",
         .withSample(loginInProgress, loginInProgress, "loginInProgress -> loginInProgress")
         .withSample(errored, loginInProgress, "errored -> loginInProgress")
         .withSample(withData, loginInProgressWithData, "withData -> loginInProgressWithData")
-        .withSample(loginInProgressWithData, loginInProgressWithData, "loginInProgressWithData -> loginInProgressWithData")
+        .withSample(loginInProgressWithData, loginInProgressWithData,
+        "loginInProgressWithData -> loginInProgressWithData")
         .withSample(erroredWithData, loginInProgressWithData, "erroredWithData -> loginInProgressWithData")
         ;
 
@@ -100,7 +114,8 @@ testActions(LoginEvents, "LoginEvents",
         .withSample(loginInProgress, errorMessage, errored, "loginInProgress -> errored")
         .withSample(errored, errorMessage, errored, "errored -> errored")
         .withSample(withData, errorMessage, erroredWithData, "withData -> erroredWithData")
-        .withSample(loginInProgressWithData, errorMessage, erroredWithData, "loginInProgressWithData -> erroredWithData")
+        .withSample(loginInProgressWithData, errorMessage, erroredWithData,
+        "loginInProgressWithData -> erroredWithData")
         .withSample(erroredWithData, errorMessage, erroredWithData, "erroredWithData -> erroredWithData")
         ;
 
@@ -115,90 +130,76 @@ testActions(LoginEvents, "LoginEvents",
     }),
 );
 
-const testStoreLastStateEffects =
-  <TState, TStore extends Store<TState>>(
-    givenDescription: string,
-    createStore: () => TStore) => (
-      whenDescription: string,
-      expectationsDescription: string,
-      events: Action[] | Observable<Action>,
-      expectations: (state: TState) => any,
-    ) => {
-      describe(givenDescription, () => {
-        describe(whenDescription, () => {
-          it(expectationsDescription, () => {
-            const store = createStore();
-            const actions = Array.isArray(events) ? Observable.of(...events) : events;
-            const prom = actions
-              .concat(Observable.of<Action>({ type: STORE_ACTIONS.FINISH }))
-              .do(store.dispatch)
-              .switchMap(() => Observable.empty<TState>())
-              .concat(store.state$)
-              .last().timeout(40)
-              .toPromise() as PromiseLike<TState>;
-            return prom.then(expectations);
-          });
-        });    // Given a store 
-      });    // Given a store 
-    };
-
 describe("createLoginStore", () => {
-  const serviceEmptyMock = () => null;
+  const serviceEmptyMock = jest.fn(() => null);
+  const serviceSuccessMock =
+    (delay: number = 40) =>
+      jest.fn<Observable<LoginResult>>(() =>
+        Observable
+          .of<LoginResult>({ kind: "success" })
+          .do<LoginResult>(u => console.log("Generating login result: ", u))
+          // .delay(delay)
+          .subscribeOn(queue));
+  const serviceErrorMock =
+    (delay: number = 40) =>
+      jest.fn<Observable<LoginResult>>(() =>
+        Observable
+          .of<LoginResult>({ kind: "error", error: errorMessage })
+          // .delay(delay)
+          .subscribeOn(queue));
 
   describe("Sanity checks", () => {
     it("it should be a function",
       () => expect(typeof createLoginStore).toBe("function"));
   }); //    Sanity checks
 
-  testStoreLastStateEffects<LoginState, LoginStore>(
-    "Given no initial state",
-    createLoginStore(serviceEmptyMock)
-  )(
-    "When the store receives no events",
-    "the first state should be the default state",
-    [],
-    state => expect(state).toEqual(defaultLoginState())
-    );
+  describe("Initial state testing", () => {
+    testStateEffects<LoginState, LoginStore>("Given no initial state",
+      createLoginStore(serviceEmptyMock)
+    )("When the store receives no events",
+      "the first state should be the default state",
+      [],
+      states => expect(states).toEqual([init]),
+      { count: 1 });
 
-  testStoreLastStateEffects<LoginState, LoginStore>(
-    "Given an initial state",
-    () => createLoginStore(serviceEmptyMock)({ init: withData })
-  )(
-    "When the store receives no events",
-    "the first state should be the given state",
-    [],
-    state => expect(state).toEqual(withData)
-    );
+    testStateEffects<LoginState, LoginStore>("Given an initial state",
+      () => createLoginStore(serviceEmptyMock)({ init: withData })
+    )("When the store receives no events",
+      "the first state should be the given state",
+      [],
+      states => expect(states).toEqual([withData]),
+      { count: 1 });
+  });    // Initial state testing
 
-  describe("Typing username and password", () => {
-    const lastStateTester =
-      testStoreLastStateEffects<LoginState, LoginStore>(
+  describe("Validation effects", () => {
+    const validationTester =
+      testLastState<LoginState, LoginStore>(
         "Given a Login store",
         createLoginStore(serviceEmptyMock)
       );
 
-    lastStateTester(
+    validationTester(
       "When the store receives no events",
       "it should not be possible to login (canLogin === false)",
       [],
       state => expect(state.canLogin).toBeFalsy()
     );
 
-    lastStateTester(
+    validationTester(
       "When the username is introduced",
       "it should not be possible to login (canLogin === false)",
       [LoginEvents.usernameChanged.create(johnName)],
       state => expect(state.canLogin).toBeFalsy()
     );
 
-    lastStateTester(
+    validationTester(
       "When the password is introduced",
       "it should not be possible to login (canLogin === false)",
       [LoginEvents.passwordChanged.create(passPassword)],
       state => expect(state.canLogin).toBeFalsy()
     );
 
-    lastStateTester(
+    validationTester(
       "When the username and password are introduced",
       "it should be possible to login (canLogin === true)",
       [
@@ -208,7 +209,7 @@ describe("createLoginStore", () => {
       state => expect(state.canLogin).toBeTruthy()
     );
 
-    lastStateTester(
+    validationTester(
       "When the username and password are introduced and then the username is deleted",
       "it should not be possible to login (canLogin === false)",
       [
@@ -219,7 +220,7 @@ describe("createLoginStore", () => {
       state => expect(state.canLogin).toBeFalsy()
     );
 
-    lastStateTester(
+    validationTester(
       "When the username and password are introduced and then the password is deleted",
       "it should not be possible to login (canLogin === false)",
       [
@@ -230,4 +231,51 @@ describe("createLoginStore", () => {
       state => expect(state.canLogin).toBeFalsy()
     );
   });    // Typing username and password
+
+  describe("Login service effects", () => {
+    const successTester =
+      testActionEffects<LoginState, LoginStore>(
+        "Given a Login store with success results",
+        () => createLoginStore(serviceSuccessMock(0))({
+          middlewaresAfter: [logUpdates({ logger: console.log.bind(console) })],
+        })
+      );
+    const errorTester =
+      testActionEffects<LoginState, LoginStore>(
+        "Given a Login store with error results",
+        () => createLoginStore(serviceErrorMock(0))()
+      );
+
+    successTester("When the store receives a login command under successful conditions",
+      "it should produces a loginStarted and a loginCompleted events",
+      store => Observable.concat(
+        Observable.of(LoginEvents.usernameChanged(johnName)).delay(10),
+        Observable.of(LoginEvents.passwordChanged(passPassword)).delay(10),
+        store.state$.first(s => s.canLogin).map(a => LoginEvents.login()).delay(10),
+      ),
+      actions => {
+        expectAction(actions, LoginEvents.loginStarted());
+        expectAction(actions, LoginEvents.loginCompleted());
+      }, {
+        timeout: 200,
+        count: 2,
+      }
+    );
+
+    errorTester("When the store receives a login command under failure conditions",
+      "it should produces a loginStarted and a loginFailed events",
+      store => Observable.concat(
+        Observable.of(LoginEvents.usernameChanged(johnName)).delay(10),
+        Observable.of(LoginEvents.passwordChanged(passPassword)).delay(10),
+        store.state$.first(s => s.canLogin).map(a => LoginEvents.login()).delay(10),
+      ),
+      actions => {
+        expectAction(actions, LoginEvents.loginStarted());
+        expectAction(actions, LoginEvents.loginFailed(errorMessage));
+      }, {
+        timeout: 200,
+        count: 2,
+      }
+    );
+  });    // Login service effects
 }); //    createLoginStore
