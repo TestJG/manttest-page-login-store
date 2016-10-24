@@ -16,7 +16,8 @@ import {
   actionCreator, TypedActionDescription, EmptyActionDescription,
   reducerFromActions, Reducer, StateUpdate,
   createStore, Store, StoreMiddleware,
-  withEffects, defineStore, ICreateStoreOptions,
+  withEffects, defineStore, ICreateStoreOptions, logUpdates,
+  tunnelActions, extendWithActions, extendWith,
 } from "rxstore";
 import { LoginService, LoginResult } from "./loginService";
 
@@ -92,7 +93,7 @@ const validationEffects = (store: LoginStore) =>
   store.state$
     .map(s => !!s.username && !!s.password)
     .distinctUntilChanged()
-    .map(LoginEvents.canLoginChanged.create);
+    .map(LoginEvents.canLoginChanged);
 
 const loginEffects =
   (loginService: LoginService) =>
@@ -100,23 +101,24 @@ const loginEffects =
       store.update$
         .filter(u => u.action.type === LoginEvents.login.type)
         .filter(u => u.state.canLogin)
-        .do<StateUpdate<LoginState>>(u => console.log("Login Effect: ", u))
+        // .do<StateUpdate<LoginState>>(u => console.log("Login Effect: ", u))
         .switchMap(u =>
           loginService(u.state.username, u.state.password)
-            .do<LoginResult>(r => console.log("Login Result: ", r))
+            // .do<LoginResult>(r => console.log("Login Result: ", r))
             .map(r => r.kind === "success"
-              ? LoginEvents.loginCompleted.create()
-              : LoginEvents.loginFailed.create(r.error))
-            .timeout(10000, Observable.of(LoginEvents.loginFailed.create("Service is unavailable right now")))
+              ? LoginEvents.loginCompleted()
+              : LoginEvents.loginFailed(r.error))
+            .timeout(10000, Observable.of(LoginEvents.loginFailed("Service is unavailable right now")))
             .startWith(LoginEvents.loginStarted.create())
         );
 
 export const createLoginStore =
-  (loginService: LoginService) => {
-    return defineStore<LoginState, LoginStore>(
+  (loginService: LoginService) =>
+    defineStore<LoginState, LoginStore>(
       loginReducer,
       defaultLoginState,
-      withEffects(validationEffects),
-      withEffects(loginEffects(loginService)),
+      withEffects(
+        validationEffects,
+        loginEffects(loginService)),
+      extendWithActions(LoginEvents)
     );
-  };

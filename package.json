@@ -1,6 +1,6 @@
 {
   "name": "manttest-page-login-store",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Manttest login page functionality",
   "main": "dist/main.js",
   "typings": "dist/main.d.ts",
@@ -36,18 +36,24 @@
   },
   "homepage": "https://github.com/testjg/manttest-page-login-store#readme",
   "devDependencies": {
+    "@types/deep-equal": "0.0.30",
     "@types/jest": "^0.9.31",
     "@types/node": "^6.0.38",
+    "@types/object-assign": "^4.0.29",
     "awesome-typescript-loader": "^2.2.1",
     "babel-core": "^6.14.0",
     "babel-loader": "^6.2.5",
     "babel-polyfill": "^6.13.0",
     "babel-preset-es2015": "^6.14.0",
     "browserify": "^13.1.0",
+    "deep-equal": "^1.0.1",
     "delete-empty": "^0.1.3",
     "dts-bundle": "^0.5.0",
     "jest": "^15.1.1",
-    "rxstore-jest": "^0.1.2",
+    "object-assign": "^4.1.0",
+    "rxjs": "^5.0.0-rc.1",
+    "rxstore": "^1.3.5",
+    "rxstore-jest": "^0.1.3",
     "standard-version": "^2.4.0",
     "tslint": "^3.15.1",
     "tslint-loader": "^2.1.5",
@@ -56,13 +62,14 @@
     "webpack": "2.1.0-beta.22",
     "webpack-node-externals": "^1.4.3"
   },
-  "dependencies": {
+  "dependencies": {},
+  "peerDependencies": {
     "@types/deep-equal": "0.0.30",
     "@types/object-assign": "^4.0.29",
     "deep-equal": "^1.0.1",
     "object-assign": "^4.1.0",
     "rxjs": "^5.0.0-rc.1",
-    "rxstore": "^1.3.4"
+    "rxstore": "^1.3.5"
   },
   "jest": {
     "verbose": true,

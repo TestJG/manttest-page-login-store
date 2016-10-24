@@ -25,7 +25,10 @@ import "rxjs/add/operator/toPromise";
 
 import * as deepEqual from "deep-equal";
 
-import { reassign, Store, Action, StoreActions, logUpdates, startEffects } from "rxstore";
+import {
+  reassign, Store, Action, StoreActions, logUpdates, startEffects,
+  tunnelActions, ActionTunnel,
+} from "rxstore";
 import { testActions, expectedActions } from "rxstore-jest";
 import {
   LoginEvents, loginReducer, LoginState, defaultLoginState,
@@ -33,9 +36,9 @@ import {
   LoginService, ErrorLoginResult, SuccessLoginResult, LoginResult,
 } from "./index";
 import {
-  testLastState, testUpdateEffects, testActionEffects, testStateEffects,
-  expectAction, expectItem,
-} from "./rxstore-jest";
+  testUpdateEffects, testActionEffects, testStateEffects,
+  expectAction, expectItem, testLastStateEffects,
+} from "rxstore-jest";
 
 const errorMessage = "some error";
 const johnName = "john";
@@ -137,16 +140,14 @@ describe("createLoginStore", () => {
       jest.fn<Observable<LoginResult>>(() =>
         Observable
           .of<LoginResult>({ kind: "success" })
-          .do<LoginResult>(u => console.log("Generating login result: ", u))
-          // .delay(delay)
-          .subscribeOn(queue));
+          // .do<LoginResult>(u => console.log("Generating login result: ", u))
+          .delay(delay, queue));
   const serviceErrorMock =
     (delay: number = 40) =>
       jest.fn<Observable<LoginResult>>(() =>
         Observable
           .of<LoginResult>({ kind: "error", error: errorMessage })
-          // .delay(delay)
-          .subscribeOn(queue));
+          .delay(delay, queue));
 
   describe("Sanity checks", () => {
     it("it should be a function",
@@ -154,79 +155,83 @@ describe("createLoginStore", () => {
   }); //    Sanity checks
 
   describe("Initial state testing", () => {
-    testStateEffects<LoginState, LoginStore>("Given no initial state",
+    testLastStateEffects<LoginState, LoginStore>("Given no initial state",
       createLoginStore(serviceEmptyMock)
     )("When the store receives no events",
       "the first state should be the default state",
       [],
-      states => expect(states).toEqual([init]),
+      state => expect(state).toEqual(init),
       { count: 1 });
 
-    testStateEffects<LoginState, LoginStore>("Given an initial state",
+    testLastStateEffects<LoginState, LoginStore>("Given an initial state",
       () => createLoginStore(serviceEmptyMock)({ init: withData })
     )("When the store receives no events",
       "the first state should be the given state",
       [],
-      states => expect(states).toEqual([withData]),
+      state => expect(state).toEqual(withData),
       { count: 1 });
   });    // Initial state testing
 
   describe("Validation effects", () => {
-    const validationTester =
-      testLastState<LoginState, LoginStore>(
-        "Given a Login store",
-        createLoginStore(serviceEmptyMock)
-      );
+    const validationStateTest = testLastStateEffects<LoginState, LoginStore>(
+      "Given a Login store",
+      createLoginStore(serviceEmptyMock)
+    );
 
-    validationTester(
+    validationStateTest(
       "When the store receives no events",
       "it should not be possible to login (canLogin === false)",
       [],
-      state => expect(state.canLogin).toBeFalsy()
+      state => expect(state.canLogin).toBeFalsy(),
+      { count: 1, timeout: 200 }
     );
 
-    validationTester(
+    validationStateTest(
       "When the username is introduced",
       "it should not be possible to login (canLogin === false)",
-      [LoginEvents.usernameChanged.create(johnName)],
+      [
+        LoginEvents.usernameChanged(johnName),
+      ],
       state => expect(state.canLogin).toBeFalsy()
     );
 
-    validationTester(
+    validationStateTest(
       "When the password is introduced",
       "it should not be possible to login (canLogin === false)",
-      [LoginEvents.passwordChanged.create(passPassword)],
+      [
+        LoginEvents.passwordChanged(passPassword),
+      ],
       state => expect(state.canLogin).toBeFalsy()
     );
 
-    validationTester(
+    validationStateTest(
       "When the username and password are introduced",
       "it should be possible to login (canLogin === true)",
       [
-        LoginEvents.usernameChanged.create(johnName),
-        LoginEvents.passwordChanged.create(passPassword),
+        LoginEvents.usernameChanged(johnName),
+        LoginEvents.passwordChanged(passPassword),
       ],
       state => expect(state.canLogin).toBeTruthy()
     );
 
-    validationTester(
+    validationStateTest(
       "When the username and password are introduced and then the username is deleted",
       "it should not be possible to login (canLogin === false)",
       [
-        LoginEvents.usernameChanged.create(johnName),
-        LoginEvents.passwordChanged.create(passPassword),
-        LoginEvents.usernameChanged.create(""),
+        LoginEvents.usernameChanged(johnName),
+        LoginEvents.passwordChanged(passPassword),
+        LoginEvents.usernameChanged(""),
       ],
       state => expect(state.canLogin).toBeFalsy()
     );
 
-    validationTester(
+    validationStateTest(
       "When the username and password are introduced and then the password is deleted",
       "it should not be possible to login (canLogin === false)",
       [
-        LoginEvents.usernameChanged.create(johnName),
-        LoginEvents.passwordChanged.create(passPassword),
-        LoginEvents.passwordChanged.create(""),
+        LoginEvents.usernameChanged(johnName),
+        LoginEvents.passwordChanged(passPassword),
+        LoginEvents.passwordChanged(""),
       ],
       state => expect(state.canLogin).toBeFalsy()
     );
@@ -237,7 +242,9 @@ describe("createLoginStore", () => {
       testActionEffects<LoginState, LoginStore>(
         "Given a Login store with success results",
         () => createLoginStore(serviceSuccessMock(0))({
-          middlewaresAfter: [logUpdates({ logger: console.log.bind(console) })],
+          middlewaresAfter: [
+            // logUpdates({ logger: console.log.bind(console) }),
+          ],
         })
       );
     const errorTester =
