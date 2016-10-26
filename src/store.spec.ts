@@ -34,6 +34,7 @@ import {
   LoginEvents, loginReducer, LoginState, defaultLoginState,
   createLoginStore, LoginStore,
   LoginService, ErrorLoginResult, SuccessLoginResult, LoginResult,
+  validationEffects,
 } from "./index";
 import {
   testUpdateEffects, testActionEffects, testStateEffects,
@@ -140,7 +141,6 @@ describe("createLoginStore", () => {
       jest.fn<Observable<LoginResult>>(() =>
         Observable
           .of<LoginResult>({ kind: "success" })
-          // .do<LoginResult>(u => console.log("Generating login result: ", u))
           .delay(delay, queue));
   const serviceErrorMock =
     (delay: number = 40) =>
@@ -155,86 +155,97 @@ describe("createLoginStore", () => {
   }); //    Sanity checks
 
   describe("Initial state testing", () => {
-    testLastStateEffects<LoginState, LoginStore>("Given no initial state",
-      createLoginStore(serviceEmptyMock)
-    )("When the store receives no events",
+    testStateEffects<LoginState, LoginStore>(
+      "Given no initial state",
+      () => createLoginStore(serviceEmptyMock)({})
+    )("When no action is emited",
       "the first state should be the default state",
       [],
-      state => expect(state).toEqual(init),
-      { count: 1 });
+      states => expect(states).toEqual([init]),
+      { timeout: 200, count: 1 }
+      );
 
-    testLastStateEffects<LoginState, LoginStore>("Given an initial state",
+    testStateEffects<LoginState, LoginStore>(
+      "Given an initial state",
       () => createLoginStore(serviceEmptyMock)({ init: withData })
-    )("When the store receives no events",
+    )("When no action is emited",
       "the first state should be the given state",
       [],
-      state => expect(state).toEqual(withData),
-      { count: 1 });
+      states => expect(states).toEqual([withData]),
+      { timeout: 200, count: 1 }
+      );
   });    // Initial state testing
 
   describe("Validation effects", () => {
-    const validationStateTest = testLastStateEffects<LoginState, LoginStore>(
-      "Given a Login store",
-      createLoginStore(serviceEmptyMock)
-    );
+    describe("Given a Login store", () => {
+      const validationTester =
+        testActionEffects<LoginState, LoginStore>(
+          "Given a Login store with success results",
+          () => createLoginStore(serviceEmptyMock)({})
+        );
 
-    validationStateTest(
-      "When the store receives no events",
-      "it should not be possible to login (canLogin === false)",
-      [],
-      state => expect(state.canLogin).toBeFalsy(),
-      { count: 1, timeout: 200 }
-    );
+      const important = (actions: Action[]) =>
+        actions.filter(LoginEvents.canLoginChanged.isA);
 
-    validationStateTest(
-      "When the username is introduced",
-      "it should not be possible to login (canLogin === false)",
-      [
-        LoginEvents.usernameChanged(johnName),
-      ],
-      state => expect(state.canLogin).toBeFalsy()
-    );
+      validationTester("When no data is introduced",
+        "it should not be possible to login",
+        [],
+        actions => expect(important(actions)).toEqual([]),
+        { timeout: 200, count: 10 }
+      );
 
-    validationStateTest(
-      "When the password is introduced",
-      "it should not be possible to login (canLogin === false)",
-      [
-        LoginEvents.passwordChanged(passPassword),
-      ],
-      state => expect(state.canLogin).toBeFalsy()
-    );
+      validationTester("When username is introduced",
+        "it should not be possible to login",
+        [LoginEvents.usernameChanged(johnName)],
+        actions => expect(important(actions)).toEqual([]),
+        { timeout: 200, count: 10 }
+      );
 
-    validationStateTest(
-      "When the username and password are introduced",
-      "it should be possible to login (canLogin === true)",
-      [
-        LoginEvents.usernameChanged(johnName),
-        LoginEvents.passwordChanged(passPassword),
-      ],
-      state => expect(state.canLogin).toBeTruthy()
-    );
+      validationTester("When password is introduced",
+        "it should not be possible to login",
+        [LoginEvents.passwordChanged(passPassword)],
+        actions => expect(important(actions)).toEqual([]),
+        { timeout: 200, count: 10 }
+      );
 
-    validationStateTest(
-      "When the username and password are introduced and then the username is deleted",
-      "it should not be possible to login (canLogin === false)",
-      [
-        LoginEvents.usernameChanged(johnName),
-        LoginEvents.passwordChanged(passPassword),
-        LoginEvents.usernameChanged(""),
-      ],
-      state => expect(state.canLogin).toBeFalsy()
-    );
+      validationTester("When the username and password are introduced",
+        "it should be possible to login",
+        [
+          LoginEvents.usernameChanged(johnName),
+          LoginEvents.passwordChanged(passPassword),
+        ],
+        actions => expect(important(actions)).toEqual([LoginEvents.canLoginChanged(true)]),
+        { timeout: 200, count: 10 }
+      );
 
-    validationStateTest(
-      "When the username and password are introduced and then the password is deleted",
-      "it should not be possible to login (canLogin === false)",
-      [
-        LoginEvents.usernameChanged(johnName),
-        LoginEvents.passwordChanged(passPassword),
-        LoginEvents.passwordChanged(""),
-      ],
-      state => expect(state.canLogin).toBeFalsy()
-    );
+      validationTester("When the username and password are introduced and then the username is deleted",
+        "it should be possible to login",
+        [
+          LoginEvents.usernameChanged(johnName),
+          LoginEvents.passwordChanged(passPassword),
+          LoginEvents.usernameChanged(""),
+        ],
+        actions => expect(important(actions)).toEqual([
+          LoginEvents.canLoginChanged(true),
+          LoginEvents.canLoginChanged(false),
+        ]),
+        { timeout: 200, count: 10 }
+      );
+
+      validationTester("When the username and password are introduced and then the password is deleted",
+        "it should be possible to login",
+        [
+          LoginEvents.usernameChanged(johnName),
+          LoginEvents.passwordChanged(passPassword),
+          LoginEvents.passwordChanged(""),
+        ],
+        actions => expect(important(actions)).toEqual([
+          LoginEvents.canLoginChanged(true),
+          LoginEvents.canLoginChanged(false),
+        ]),
+        { timeout: 200, count: 10 }
+      );
+    }); //    Given a Login store
   });    // Typing username and password
 
   describe("Login service effects", () => {
@@ -253,6 +264,13 @@ describe("createLoginStore", () => {
         () => createLoginStore(serviceErrorMock(0))()
       );
 
+    const important = (actions: Action[]) =>
+      actions.filter(a =>
+        LoginEvents.login.isA(a) ||
+        LoginEvents.loginStarted.isA(a) ||
+        LoginEvents.loginCompleted.isA(a) ||
+        LoginEvents.loginFailed.isA(a));
+
     successTester("When the store receives a login command under successful conditions",
       "it should produces a loginStarted and a loginCompleted events",
       store => Observable.concat(
@@ -260,13 +278,12 @@ describe("createLoginStore", () => {
         Observable.of(LoginEvents.passwordChanged(passPassword)).delay(10),
         store.state$.first(s => s.canLogin).map(a => LoginEvents.login()).delay(10),
       ),
-      actions => {
-        expectAction(actions, LoginEvents.loginStarted());
-        expectAction(actions, LoginEvents.loginCompleted());
-      }, {
-        timeout: 200,
-        count: 2,
-      }
+      actions => expect(important(actions)).toEqual([
+        LoginEvents.login(),
+        LoginEvents.loginStarted(),
+        LoginEvents.loginCompleted(),
+      ])
+      , { timeout: 200, count: 10 }
     );
 
     errorTester("When the store receives a login command under failure conditions",
@@ -276,13 +293,12 @@ describe("createLoginStore", () => {
         Observable.of(LoginEvents.passwordChanged(passPassword)).delay(10),
         store.state$.first(s => s.canLogin).map(a => LoginEvents.login()).delay(10),
       ),
-      actions => {
-        expectAction(actions, LoginEvents.loginStarted());
-        expectAction(actions, LoginEvents.loginFailed(errorMessage));
-      }, {
-        timeout: 200,
-        count: 2,
-      }
+      actions => expect(important(actions)).toEqual([
+        LoginEvents.login(),
+        LoginEvents.loginStarted(),
+        LoginEvents.loginFailed(errorMessage),
+      ])
+      , { timeout: 200, count: 10 }
     );
   });    // Login service effects
 }); //    createLoginStore

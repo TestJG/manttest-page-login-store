@@ -12,12 +12,12 @@ import "rxjs/add/operator/debounceTime";
 import "rxjs/add/operator/timeout";
 import * as deepEqual from "deep-equal";
 import {
-  reassign, reassignif,
+  reassign, reassignif, Action,
   actionCreator, TypedActionDescription, EmptyActionDescription,
   reducerFromActions, Reducer, StateUpdate,
   createStore, Store, StoreMiddleware,
   withEffects, defineStore, ICreateStoreOptions, logUpdates,
-  tunnelActions, extendWithActions, extendWith,
+  tunnelActions, extendWithActions, extendWith, startEffects,
 } from "rxstore";
 import { LoginService, LoginResult } from "./loginService";
 
@@ -89,22 +89,22 @@ export const defaultLoginState = (): LoginState => ({
   error: undefined,
 });
 
-const validationEffects = (store: LoginStore) =>
+export const validationEffects = (store: LoginStore) =>
   store.state$
-    .map(s => !!s.username && !!s.password)
-    .distinctUntilChanged()
-    .map(LoginEvents.canLoginChanged);
+    .map(s => [s.canLogin, !!s.username && !!s.password])
+    .filter(([was, willBe]) => was !== willBe)
+    .map(([was, willBe]) => willBe)
+    // .distinctUntilChanged()
+    .map(canLogin => LoginEvents.canLoginChanged(canLogin));
 
-const loginEffects =
+export const loginEffects =
   (loginService: LoginService) =>
     (store: LoginStore) =>
       store.update$
         .filter(u => u.action.type === LoginEvents.login.type)
         .filter(u => u.state.canLogin)
-        // .do<StateUpdate<LoginState>>(u => console.log("Login Effect: ", u))
         .switchMap(u =>
           loginService(u.state.username, u.state.password)
-            // .do<LoginResult>(r => console.log("Login Result: ", r))
             .map(r => r.kind === "success"
               ? LoginEvents.loginCompleted()
               : LoginEvents.loginFailed(r.error))
@@ -119,6 +119,7 @@ export const createLoginStore =
       defaultLoginState,
       withEffects(
         validationEffects,
-        loginEffects(loginService)),
+        loginEffects(loginService),
+      ),
       extendWithActions(LoginEvents)
     );
